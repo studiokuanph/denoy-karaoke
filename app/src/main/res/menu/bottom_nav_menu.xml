@@ -1,0 +1,15 @@
+<?xml version="1.0" encoding="utf-8"?>
+<menu xmlns:android="http://schemas.android.com/apk/res/android">
+    <item
+        android:id="@+id/nav_songs"
+        android:icon="@android:drawable/ic_menu_search"
+        android:title="@string/nav_songs" />
+    <item
+        android:id="@+id/nav_player"
+        android:icon="@android:drawable/ic_media_play"
+        android:title="@string/nav_player" />
+    <item
+        android:id="@+id/nav_remote"
+        android:icon="@android:drawable/ic_menu_share"
+        android:title="@string/nav_remote" />
+</menu>
