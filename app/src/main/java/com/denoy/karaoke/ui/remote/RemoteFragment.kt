@@ -8,13 +8,26 @@ import android.widget.TextView
 import androidx.fragment.app.Fragment
 import com.denoy.karaoke.R
 import kotlinx.coroutines.*
-import java.net.ServerSocket
+import org.java_websocket.client.WebSocketClient
+import org.java_websocket.handshake.ServerHandshake
+import java.net.URI
 
 class RemoteFragment : Fragment() {
 
     private lateinit var tvStatus: TextView
     private lateinit var tvIpAddress: TextView
-    private var serverJob: Job? = null
+    private lateinit var tvNowPlaying: TextView
+    private lateinit var tvLyrics: TextView
+
+    private var wsClient: WebSocketClient? = null
+    private var reconnectJob: Job? = null
+    private var scope = CoroutineScope(Dispatchers.Main + SupervisorJob())
+
+    companion object {
+        var serverHost: String = "192.168.254.198"
+        var serverPort: Int = 8765
+        var onSongLoaded: ((String, String) -> Unit)? = null
+    }
 
     override fun onCreateView(
         inflater: LayoutInflater, container: ViewGroup?, savedInstanceState: Bundle?
@@ -22,79 +35,114 @@ class RemoteFragment : Fragment() {
         val view = inflater.inflate(R.layout.fragment_remote, container, false)
         tvStatus = view.findViewById(R.id.tv_remote_status)
         tvIpAddress = view.findViewById(R.id.tv_remote_ip)
+        tvNowPlaying = view.findViewById(R.id.tv_now_playing)
+        tvLyrics = view.findViewById(R.id.tv_lyrics)
         return view
     }
 
-    override fun onViewCreated(view: View, savedInstanceState: Bundle?) {
-        super.onViewCreated(view, savedInstanceState)
-        startRemoteServer()
+    override fun onViewCreated(view: View, savedState: Bundle?) {
+        super.onViewCreated(view, savedState)
+        connect()
     }
 
-    private fun startRemoteServer() {
-        serverJob = CoroutineScope(Dispatchers.IO).launch {
-            try {
-                val server = ServerSocket(48080)
-                withContext(Dispatchers.Main) {
-                    tvStatus.text = "Server running on port 48080"
-                    tvIpAddress.text = getLocalIpAddress()
-                }
-
-                while (isActive) {
-                    val client = server.accept()
-                    launch {
-                        handleClient(client)
-                    }
-                }
-            } catch (e: Exception) {
-                withContext(Dispatchers.Main) {
-                    tvStatus.text = "Server error: ${e.message}"
-                }
-            }
+    fun connect(host: String = serverHost, port: Int = serverPort) {
+        serverHost = host
+        serverPort = port
+        scope.launch {
+            tvStatus.text = "Connecting to $host:$port..."
+            connectToServer(host, port)
         }
     }
 
-    private fun handleClient(client: java.net.Socket) {
+    private fun connectToServer(host: String, port: Int) {
         try {
-            val reader = client.getInputStream().bufferedReader()
-            val writer = client.getOutputStream().bufferedWriter()
+            val uri = URI.create("ws://$host:$port/")
+            wsClient = object : WebSocketClient(uri) {
+                override fun onOpen(handshake: ServerHandshake) {
+                    scope.launch {
+                        tvStatus.text = "Connected to PC server"
+                        tvIpAddress.text = "$host:$port"
+                    }
+                }
 
-            writer.write("HTTP/1.1 200 OK\r\n")
-            writer.write("Content-Type: application/json\r\n\r\n")
-            writer.write("{\"status\":\"ok\",\"server\":\"Denoy Karaoke\"}")
-            writer.flush()
+                override fun onMessage(message: String) {
+                    try {
+                        val data = org.json.JSONObject(message)
+                        when {
+                            data.has("type") && data.getString("type") == "state_update" -> {
+                                val np = data.optJSONObject("now_playing")
+                                if (np != null) {
+                                    val title = np.optString("title", "")
+                                    val code = np.optString("code", "")
+                                    scope.launch {
+                                        tvNowPlaying.text = if (title.isNotEmpty()) "$title (Code: $code)" else "No song playing"
+                                    }
+                                }
+                            }
+                            data.has("type") && data.getString("type") == "SONG_LOADED" -> {
+                                val title = data.optJSONObject("now_playing")?.optString("title", "") ?: ""
+                                val lines = data.optJSONArray("lines")
+                                val lyrics = StringBuilder()
+                                if (lines != null) {
+                                    for (i in 0 until lines.length()) {
+                                        val line = lines.getJSONObject(i)
+                                        val speaker = line.optString("speaker", "")
+                                        val syllables = line.optJSONArray("syllables")
+                                        if (syllables != null) {
+                                            for (j in 0 until syllables.length()) {
+                                                lyrics.append(syllables.getJSONObject(j).optString("text", ""))
+                                            }
+                                            lyrics.append("\n")
+                                        }
+                                    }
+                                }
+                                scope.launch {
+                                    tvNowPlaying.text = "Now Playing: $title"
+                                    tvLyrics.text = lyrics.toString()
+                                }
+                            }
+                            data.has("type") && data.getString("type") == "welcome" -> {
+                                scope.launch {
+                                    tvStatus.text = "Connected to ${data.optString("server", "unknown")}"
+                                }
+                            }
+                        }
+                    } catch (e: Exception) {
+                        scope.launch { tvStatus.text = "Parse error: ${e.message}" }
+                    }
+                }
 
-            client.close()
-        } catch (e: Exception) {
-            e.printStackTrace()
-        }
-    }
+                override fun onClose(code: Int, reason: String, remote: Boolean) {
+                    scope.launch {
+                        tvStatus.text = "Disconnected. Reconnecting..."
+                        // Auto-reconnect
+                        delay(3000)
+                        connectToServer(host, port)
+                    }
+                }
 
-    private fun getLocalIpAddress(): String {
-        return try {
-            val interfaces = java.net.NetworkInterface.getNetworkInterfaces()
-            while (interfaces.hasMoreElements()) {
-                val iface = interfaces.nextElement()
-                if (iface.isLoopback || !iface.isUp) continue
-                val addrs = iface.inetAddresses
-                while (addrs.hasMoreElements()) {
-                    val addr = addrs.nextElement()
-                    if (addr is java.net.Inet4Address) {
-                        return addr.hostAddress
+                override fun onError(ex: Exception) {
+                    scope.launch {
+                        tvStatus.text = "Error: ${ex.message}"
                     }
                 }
             }
-            "Unknown"
+            wsClient?.connect()
         } catch (e: Exception) {
-            "Unknown"
+            scope.launch {
+                tvStatus.text = "Failed: ${e.message}"
+            }
         }
     }
 
-    private fun stopRemoteServer() {
-        serverJob?.cancel()
+    fun playSong(code: String) {
+        val msg = """{"type":"command","action":"play","code":"$code"}"""
+        wsClient?.send(msg)
     }
 
-    override fun onDestroy() {
-        super.onDestroy()
-        stopRemoteServer()
+    override fun onDestroyView() {
+        super.onDestroyView()
+        wsClient?.close()
+        scope.cancel()
     }
 }

@@ -6,13 +6,13 @@
     android:layout_width="match_parent"
     android:layout_height="match_parent"
     android:background="#FF121212"
-    android:padding="24dp">
+    android:padding="16dp">
 
     <TextView
         android:id="@+id/title_label"
         android:layout_width="wrap_content"
         android:layout_height="wrap_content"
-        android:text="Remote Control"
+        android:text="PC Bridge"
         android:textColor="#FFFFFFFF"
         android:textSize="24sp"
         android:textStyle="bold"
@@ -23,10 +23,10 @@
         android:id="@+id/tv_remote_status"
         android:layout_width="0dp"
         android:layout_height="wrap_content"
-        android:layout_marginTop="24dp"
-        android:text="Starting server..."
+        android:layout_marginTop="12dp"
+        android:text="Disconnected"
         android:textColor="#FFAAAAAA"
-        android:textSize="16sp"
+        android:textSize="14sp"
         app:layout_constraintEnd_toEndOf="parent"
         app:layout_constraintStart_toStartOf="parent"
         app:layout_constraintTop_toBottomOf="@id/title_label" />
@@ -35,24 +35,39 @@
         android:id="@+id/tv_remote_ip"
         android:layout_width="0dp"
         android:layout_height="wrap_content"
-        android:layout_marginTop="16dp"
+        android:layout_marginTop="4dp"
         android:textColor="#FF4CAF50"
+        android:textSize="14sp"
+        app:layout_constraintEnd_toEndOf="parent"
+        app:layout_constraintStart_toStartOf="parent"
+        app:layout_constraintTop_toBottomOf="@id/tv_remote_status"
+        tools:text="192.168.254.198:8765" />
+
+    <TextView
+        android:id="@+id/tv_now_playing"
+        android:layout_width="0dp"
+        android:layout_height="wrap_content"
+        android:layout_marginTop="24dp"
+        android:textColor="#FFFFFFFF"
         android:textSize="18sp"
         android:textStyle="bold"
         app:layout_constraintEnd_toEndOf="parent"
         app:layout_constraintStart_toStartOf="parent"
-        app:layout_constraintTop_toBottomOf="@id/tv_remote_status"
-        tools:text="192.168.1.100" />
+        app:layout_constraintTop_toBottomOf="@id/tv_remote_ip"
+        tools:text="Now Playing: Yesterday Once More" />
 
     <TextView
+        android:id="@+id/tv_lyrics"
         android:layout_width="0dp"
-        android:layout_height="wrap_content"
-        android:layout_marginTop="48dp"
-        android:text="Use your phone/tablet browser to control playback.\n\nOpen http://{ip}:48080 in your browser."
-        android:textColor="#FF666666"
-        android:textSize="14sp"
+        android:layout_height="0dp"
+        android:layout_marginTop="12dp"
+        android:gravity="center"
+        android:textColor="#FFCCCCCC"
+        android:textSize="20sp"
+        app:layout_constraintBottom_toBottomOf="parent"
         app:layout_constraintEnd_toEndOf="parent"
         app:layout_constraintStart_toStartOf="parent"
-        app:layout_constraintTop_toBottomOf="@id/tv_remote_ip" />
+        app:layout_constraintTop_toBottomOf="@id/tv_now_playing"
+        tools:text="When I was young\nI'd listen to the radio" />
 
 </androidx.constraintlayout.widget.ConstraintLayout>

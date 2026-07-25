@@ -68,6 +68,12 @@ class SongListFragment : Fragment() {
                 putInt("songId", entry.songId)
             }
             parentFragmentManager.setFragmentResult("play_song", bundle)
+            // Try PC bridge first, fall back to local player
+            try {
+                val remoteFragment = parentFragmentManager
+                    .findFragmentByTag("nav_remote") as? com.denoy.karaoke.ui.remote.RemoteFragment
+                remoteFragment?.playSong(entry.songId.toString())
+            } catch (_: Exception) {}
             findNavController().navigate(R.id.nav_player)
         }
         recyclerView.adapter = adapter
