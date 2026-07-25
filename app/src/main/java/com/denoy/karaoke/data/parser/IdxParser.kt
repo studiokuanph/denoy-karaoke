@@ -51,8 +51,8 @@ class IdxParser(private val path: String) {
 
             if (sep + 12 > data.size) break
 
-            val bb = ByteBuffer.wrap(data, sep + 1, 3).order(ByteOrder.LITTLE_ENDIAN)
-            val songId = bb.getInt() and 0xFFFFFF
+            val songId = ByteBuffer.wrap(data, sep + 1, 4)
+                .order(ByteOrder.LITTLE_ENDIAN).getInt() and 0xFFFFFF
             if (songId > 100000) break
 
             val offset = ByteBuffer.wrap(data, sep + 4, 4)

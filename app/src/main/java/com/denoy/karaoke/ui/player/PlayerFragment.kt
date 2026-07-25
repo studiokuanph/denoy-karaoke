@@ -9,6 +9,7 @@ import androidx.fragment.app.Fragment
 import com.denoy.karaoke.R
 import com.denoy.karaoke.data.crypto.DatDecoder
 import com.denoy.karaoke.data.midi.MidiPlayer
+import com.denoy.karaoke.ui.songs.AppSettings
 import kotlinx.coroutines.*
 
 class PlayerFragment : Fragment() {
@@ -22,9 +23,7 @@ class PlayerFragment : Fragment() {
     private lateinit var btnStop: View
 
     private var midiPlayer: MidiPlayer? = null
-    private var datDecoder: DatDecoder? = null
-    private var currentSongTitle = ""
-    private var currentSongId = 0
+    private var currentMidiData: ByteArray? = null
     private var coroutineScope = CoroutineScope(Dispatchers.Main + SupervisorJob())
 
     override fun onCreateView(
@@ -43,43 +42,84 @@ class PlayerFragment : Fragment() {
         btnPlay.setOnClickListener { playCurrentSong() }
         btnStop.setOnClickListener { stopPlayback() }
 
-        // Listen for song selection
+        // Listen for song selection from the song list
         parentFragmentManager.setFragmentResultListener("play_song", this) { _, bundle ->
-            currentSongTitle = bundle.getString("title", "")
-            currentSongId = bundle.getInt("songId", 0)
+            currentMidiData = null
+            val title = bundle.getString("title", "Unknown")
             val offset = bundle.getLong("offset", 0)
             val size = bundle.getInt("size", 0)
-            tvTitle.text = currentSongTitle
 
-            // Load and decode the song
-            coroutineScope.launch(Dispatchers.IO) {
-                try {
-                    val midiData = datDecoder?.decode(offset, size)
-                    if (midiData != null) {
-                        withContext(Dispatchers.Main) {
-                            playMidiData(midiData)
-                        }
-                    }
-                } catch (e: Exception) {
-                    withContext(Dispatchers.Main) {
-                        tvLyricsBottom.text = "Decode failed: ${e.message}"
-                    }
-                }
+            tvTitle.text = title
+            tvLyricsTop.text = ""
+            tvLyricsBottom.text = "Loading..."
+
+            loadAndPlaySong(offset, size)
+        }
+
+        // Also check arguments (direct navigation)
+        arguments?.let { args ->
+            val title = args.getString("title", "Unknown")
+            val offset = args.getLong("offset", 0)
+            val size = args.getInt("size", 0)
+            if (offset > 0) {
+                tvTitle.text = title
+                tvLyricsBottom.text = "Loading..."
+                loadAndPlaySong(offset, size)
             }
         }
 
         return view
     }
 
-    private fun playCurrentSong() {
-        midiPlayer?.play(ByteArray(0), object : MidiPlayer.Callback {
-            override fun onTick(tick: Int) {}
-            override fun onLyricTick(tick: Int, text: String) {
-                requireActivity().runOnUiThread {
-                    tvLyricsTop.text = tvLyricsBottom.text
-                    tvLyricsBottom.text = text
+    private fun loadAndPlaySong(offset: Long, size: Int) {
+        val datPath = AppSettings.datPath
+        if (datPath.isEmpty()) {
+            tvLyricsBottom.text = "No songfile.dat found. Get it from the Songs tab."
+            return
+        }
+
+        coroutineScope.launch(Dispatchers.IO) {
+            try {
+                val decoder = DatDecoder(datPath)
+                val midiData = decoder.decode(offset, size)
+
+                withContext(Dispatchers.Main) {
+                    currentMidiData = midiData
+                    tvLyricsBottom.text = "Ready — tap Play"
+                    tvTitle.text = tvTitle.text
+                }
+            } catch (e: Exception) {
+                withContext(Dispatchers.Main) {
+                    val errMsg = e.message ?: e.javaClass.simpleName
+                    tvLyricsBottom.text = "Decode error: $errMsg"
                 }
             }
+        }
+    }
+
+    private fun playCurrentSong() {
+        val data = currentMidiData ?: return
+
+        if (midiPlayer == null) {
+            midiPlayer = MidiPlayer(requireContext())
+        }
+
+        midiPlayer?.play(data, object : MidiPlayer.Callback {
+            override fun onTick(tick: Int) {
+                requireActivity().runOnUiThread {
+                    tvTimer.text = "Tick: $tick"
+                }
+            }
+
+            override fun onLyricTick(tick: Int, text: String) {
+                requireActivity().runOnUiThread {
+                    if (text.isNotBlank()) {
+                        tvLyricsTop.text = tvLyricsBottom.text
+                        tvLyricsBottom.text = text
+                    }
+                }
+            }
+
             override fun onSongEnd() {
                 requireActivity().runOnUiThread {
                     tvLyricsBottom.text = "--- End ---"
@@ -90,13 +130,6 @@ class PlayerFragment : Fragment() {
 
     private fun stopPlayback() {
         midiPlayer?.stop()
-    }
-
-    private fun playMidiData(midiData: ByteArray) {
-        if (midiPlayer == null) {
-            midiPlayer = MidiPlayer(requireContext())
-        }
-        playCurrentSong()
     }
 
     override fun onDestroy() {
